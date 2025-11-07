@@ -84,4 +84,4 @@ Provides a secure and efficient token-based authentication system using Fastify,
 
 ### Extras
 
-- [**fastify-template**](https://github.com/jmrl23/fastify-template) - Template used, visit to learn more about project architechture
+- [**fastify-template**](https://github.com/jmrl23/fastify-template) - Template used, visit to learn more about project architecture.
