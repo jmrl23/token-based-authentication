@@ -1,7 +1,12 @@
+import { FastifyRequest } from 'fastify';
 import { asJsonSchema, asRoute } from '../../common/typings';
 import { httpErrorSchema } from '../../schemas/http-error.schema';
 import { requiredAccess } from '../auth/prehandlers/required-access';
 import { userSchema } from '../auth/schemas/user.schema';
+import {
+  GetCurrentSessionSchema,
+  getCurrentSessionSchema,
+} from './schemas/get-current-session';
 
 export default asRoute(async function userRoute(app) {
   app.route({
@@ -17,6 +22,7 @@ export default asRoute(async function userRoute(app) {
       description: 'get current user',
       tags: ['Users'],
       security: [{ bearerAuth: [] }],
+      querystring: getCurrentSessionSchema,
       response: {
         default: httpErrorSchema,
         200: asJsonSchema({
@@ -34,9 +40,18 @@ export default asRoute(async function userRoute(app) {
       },
     },
     preHandler: requiredAccess,
-    async handler(request) {
+    async handler(
+      request: FastifyRequest<{
+        Querystring: GetCurrentSessionSchema;
+      }>,
+    ) {
+      const [, accessToken] = request.headers.authorization?.split(' ') ?? [];
+      const user = await this.authService.getUserFromAccessToken(
+        accessToken,
+        request.query.revalidate,
+      );
       return {
-        data: request.user,
+        data: user,
       };
     },
   });

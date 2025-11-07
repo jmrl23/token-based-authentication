@@ -135,9 +135,11 @@ export class AuthService {
 
   async getUserFromAccessToken(
     accessToken: string,
+    revalidate: boolean = false,
   ): Promise<UserSchema | null> {
     try {
       const CACHE_KEY = `access_token_verify_attempt_result:${accessToken}`;
+      if (revalidate === true) await this.cache.del(CACHE_KEY);
       const cachedAttemptResult = await this.cache.get<UserSchema | number>(
         CACHE_KEY,
       );
@@ -164,8 +166,7 @@ export class AuthService {
         .from(user)
         .where(eq(user.id, userId));
       const now = Date.now();
-      const expMs = exp * 1000;
-      const expiration = expMs - now;
+      const expiration = exp * 1000 - now;
       await this.cache.set(CACHE_KEY, foundUser, expiration);
       return foundUser;
     } catch {
