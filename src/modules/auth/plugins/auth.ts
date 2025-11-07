@@ -3,6 +3,7 @@ import { createCache } from 'cache-manager';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import fastifyPlugin from 'fastify-plugin';
 import Keyv from 'keyv';
+import { PEM_EXPORT_PATH } from '../../../config/env';
 import { AuthService } from '../auth.service';
 import { UserSchema } from '../schemas/user.schema';
 
@@ -20,22 +21,13 @@ type Options = {
   cacheStores: Keyv[];
   db: ReturnType<typeof drizzle>;
   cookieSecret: string;
-  jwt: {
-    private: string;
-    public: string;
-  };
 };
 
 export const auth = fastifyPlugin<Options>(async function auth(app, options) {
   const cache = createCache({
     stores: options.cacheStores,
   });
-  const authService = new AuthService(
-    cache,
-    options.db,
-    options.jwt.private,
-    options.jwt.public,
-  );
+  const authService = new AuthService(cache, options.db, PEM_EXPORT_PATH);
 
   await app.register(fastifyCookie, {
     secret: options.cookieSecret,

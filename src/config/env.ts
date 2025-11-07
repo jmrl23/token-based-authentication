@@ -1,5 +1,4 @@
 import * as env from 'env-var';
-import fs from 'node:fs';
 import path from 'node:path';
 
 export const PORT = env.get('PORT').default(3001).asPortNumber();
@@ -14,12 +13,4 @@ export const COOKIE_SECRET = env.get('COOKIE_SECRET').required().asString();
 
 export const REDIS_URL = env.get('REDIS_URL').required().asString();
 
-export const JWT_SECRET_PRIVATE = fs.readFileSync(
-  path.resolve(__dirname, '../../auth/jwt'),
-  'utf-8',
-);
-
-export const JWT_SECRET_PUBLIC = fs.readFileSync(
-  path.resolve(__dirname, '../../auth/jwt.pub'),
-  'utf-8',
-);
+export const PEM_EXPORT_PATH = path.resolve(__dirname, '../../auth');

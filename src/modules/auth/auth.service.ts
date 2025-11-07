@@ -3,10 +3,13 @@ import { Cache } from 'cache-manager';
 import { and, eq, gt, InferSelectModel } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Conflict, Unauthorized } from 'http-errors';
-import jwt from 'jsonwebtoken';
+import jwt, { JwtHeader, SigningKeyCallback } from 'jsonwebtoken';
 import ms from 'ms';
 import { randomBytes } from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
 import { refreshToken, user } from '../../db/schema';
+import { JwksService } from '../../services/jwks.service';
 import { TokenSchema } from './schemas/tokens.schema';
 import { UserSchema } from './schemas/user.schema';
 
@@ -14,8 +17,7 @@ export class AuthService {
   constructor(
     private readonly cache: Cache,
     private readonly db: ReturnType<typeof drizzle>,
-    private readonly JWT_SECRET_PRIVATE: string,
-    private readonly JWT_SECRET_PUBLIC: string,
+    private readonly PEM_EXPORT_PATH: string,
   ) {}
 
   async register(username: string, password: string): Promise<TokenSchema> {
@@ -151,13 +153,20 @@ export class AuthService {
         }
       }
       await this.cache.set(CACHE_KEY, 1, ms('30m'));
-      const { userId, exp } = jwt.verify(
-        accessToken,
-        this.JWT_SECRET_PUBLIC,
-      ) as {
+      const { userId } = await new Promise<{
         userId: string;
         exp: number;
-      };
+      }>((resolve, reject) => {
+        jwt.verify(
+          accessToken,
+          this.jwtGetPublicKeyResolver.bind(this),
+          { algorithms: ['RS256'] },
+          (error, decoded) => {
+            if (error) return reject(error);
+            resolve(decoded as any);
+          },
+        );
+      });
       const [foundUser] = await this.db
         .select({
           id: user.id,
@@ -165,9 +174,8 @@ export class AuthService {
         })
         .from(user)
         .where(eq(user.id, userId));
-      const now = Date.now();
-      const expiration = exp * 1000 - now;
-      await this.cache.set(CACHE_KEY, foundUser, expiration);
+      if (!foundUser) return null;
+      await this.cache.set(CACHE_KEY, foundUser, ms('1m'));
       return foundUser;
     } catch {
       return null;
@@ -196,10 +204,55 @@ export class AuthService {
   }
 
   private generateAccessToken(userId: string): string {
-    const token = jwt.sign({ userId }, this.JWT_SECRET_PRIVATE, {
+    const folders = fs
+      .readdirSync(this.PEM_EXPORT_PATH)
+      .filter((item) => {
+        const stat = fs.statSync(path.resolve(this.PEM_EXPORT_PATH, item));
+        return stat.isDirectory();
+      })
+      .map((folder) => ({
+        name: folder,
+        location: path.resolve(this.PEM_EXPORT_PATH, folder),
+      }));
+    const newestFolder = folders.sort((a, b) => {
+      const aTimestamp = fs.statSync(a.location).mtime;
+      const bTimestamp = fs.statSync(b.location).mtime;
+      return bTimestamp.getTime() - aTimestamp.getTime();
+    })[0];
+    const PRIVATE_KEY = fs.readFileSync(
+      path.resolve(newestFolder.location, 'private.key'),
+      'utf-8',
+    );
+    const KEY_ID = newestFolder.name;
+    const token = jwt.sign({ userId }, PRIVATE_KEY, {
       expiresIn: '5m',
-      algorithm: 'RS256',
+      algorithm: JwksService.ALGORITHM,
+      keyid: KEY_ID,
     });
     return token;
+  }
+
+  private async jwtGetPublicKeyResolver(
+    header: JwtHeader,
+    callback: SigningKeyCallback,
+  ) {
+    const folders = fs.readdirSync(this.PEM_EXPORT_PATH);
+    if (!header.kid) {
+      callback(new Error('kid not found'));
+      return;
+    }
+    if (folders.includes(header.kid)) {
+      const stat = fs.statSync(path.resolve(this.PEM_EXPORT_PATH, header.kid));
+      if (stat.isDirectory()) {
+        const PUBLIC_KEY = fs.readFileSync(
+          path.resolve(this.PEM_EXPORT_PATH, header.kid, 'public.key'),
+          'utf-8',
+        );
+        callback(null, PUBLIC_KEY);
+        return;
+      }
+    }
+    callback(new Error('kid not found'));
+    return;
   }
 }

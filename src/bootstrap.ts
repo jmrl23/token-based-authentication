@@ -11,13 +11,7 @@ import Keyv from 'keyv';
 import path from 'node:path';
 import { db } from './common/db';
 import { logger } from './common/logger';
-import {
-  COOKIE_SECRET,
-  CORS_ORIGIN,
-  JWT_SECRET_PRIVATE,
-  JWT_SECRET_PUBLIC,
-  REDIS_URL,
-} from './config/env';
+import { COOKIE_SECRET, CORS_ORIGIN, REDIS_URL } from './config/env';
 import { auth } from './modules/auth/plugins/auth';
 import { routesAutoload } from './plugins/routesAutoload';
 import { swagger } from './plugins/swagger';
@@ -71,10 +65,6 @@ export const bootstrap: FastifyPluginAsync<Options> = fastifyPlugin(
       ],
       db,
       cookieSecret: COOKIE_SECRET,
-      jwt: {
-        private: JWT_SECRET_PRIVATE,
-        public: JWT_SECRET_PUBLIC,
-      },
     });
 
     await app.register(fastifyRateLimit, {

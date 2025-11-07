@@ -7,5 +7,5 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 .env*.local
-/auth/jwt
-/auth/jwt.pub
+!auth/.gitkeep
+auth/**/*

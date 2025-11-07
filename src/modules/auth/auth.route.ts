@@ -2,33 +2,22 @@ import { FastifyRequest } from 'fastify';
 import { Unauthorized } from 'http-errors';
 import ms from 'ms';
 import { asJsonSchema, asRoute } from '../../common/typings';
-import { JWT_SECRET_PUBLIC } from '../../config/env';
 import { httpErrorSchema } from '../../schemas/http-error.schema';
 import { requiredAccess } from './prehandlers/required-access';
+import {
+  getCurrentSessionSchema,
+  GetCurrentSessionSchema,
+} from './schemas/get-current-session';
 import { loginUserSchema } from './schemas/login-user.schema';
 import {
   RegisterUserSchema,
   registerUserSchema,
 } from './schemas/register-user.schema';
+import { sessionSchema } from './schemas/session.schema';
 import { accessTokenSchema } from './schemas/tokens.schema';
 
 export default asRoute(async function authRoute(app) {
   app
-
-    .route({
-      method: 'GET',
-      url: '/',
-      schema: {
-        description: 'expose public RSA key',
-        tags: ['Auth'],
-        returns: {
-          200: asJsonSchema({ type: 'string' }),
-        },
-      },
-      async handler() {
-        return JWT_SECRET_PUBLIC;
-      },
-    })
 
     .route({
       method: 'POST',
@@ -230,6 +219,52 @@ export default asRoute(async function authRoute(app) {
         return {
           data: {
             access_token: tokens.access_token,
+          },
+        };
+      },
+    })
+
+    .route({
+      method: 'GET',
+      url: '/session',
+      config: {
+        rateLimit: {
+          max: 60,
+          timeWindow: '1m',
+        },
+      },
+      schema: {
+        description: 'get current session',
+        tags: ['Auth'],
+        security: [{ bearerAuth: [] }],
+        querystring: getCurrentSessionSchema,
+        response: {
+          default: httpErrorSchema,
+          200: asJsonSchema({
+            type: 'object',
+            description: 'current session',
+            additionalProperties: false,
+            required: ['data'],
+            properties: {
+              data: sessionSchema,
+            },
+          }),
+        },
+      },
+      preHandler: requiredAccess,
+      async handler(
+        request: FastifyRequest<{
+          Querystring: GetCurrentSessionSchema;
+        }>,
+      ) {
+        const [, accessToken] = request.headers.authorization?.split(' ') ?? [];
+        const user = await this.authService.getUserFromAccessToken(
+          accessToken,
+          request.query.revalidate,
+        );
+        return {
+          data: {
+            user,
           },
         };
       },

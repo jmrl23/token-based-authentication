@@ -3,11 +3,13 @@ import { OpenAPIV3_1 } from 'openapi-types';
 import { app } from './app';
 import { bootstrap } from './bootstrap';
 import { PORT } from './config/env';
+import { JwksService } from './services/jwks.service';
 
 async function main() {
   const host = '0.0.0.0';
   const port = await detect(PORT);
 
+  await JwksService.initialize();
   await app.register(bootstrap);
 
   app.listen({
