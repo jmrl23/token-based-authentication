@@ -1,24 +1,10 @@
-import KeyvRedis from '@keyv/redis';
-import { createCache } from 'cache-manager';
-import Keyv from 'keyv';
-import ms from 'ms';
 import { asJsonSchema, asRoute } from '../../common/typings';
-import { REDIS_URL } from '../../config/env';
 import { httpErrorSchema } from '../../schemas/http-error.schema';
 import { JwksService } from '../../services/jwks.service';
 
 export const prefix = '/';
 
 export default asRoute(async function appRoute(app) {
-  const cache = createCache({
-    stores: [
-      new Keyv({
-        namespace: 'app',
-        store: new KeyvRedis(REDIS_URL),
-      }),
-    ],
-  });
-
   app.route({
     method: 'GET',
     url: '/well-known/jwks.json',
@@ -42,6 +28,7 @@ export default asRoute(async function appRoute(app) {
               type: 'array',
               items: {
                 type: 'object',
+                additionalProperties: true,
               },
             },
           },
@@ -49,15 +36,10 @@ export default asRoute(async function appRoute(app) {
       },
     },
     async handler() {
-      const CACHE_KEY = 'well-known:jwks';
-      const cached = await cache.get(CACHE_KEY);
-      if (cached) {
-        return {
-          keys: cached,
-        };
-      }
-      const jwks = await JwksService.generateJwks();
-      await cache.set(CACHE_KEY, jwks, ms('30m'));
+      const jwks = await JwksService.getJwks();
+
+      console.log(jwks);
+
       return {
         keys: jwks,
       };

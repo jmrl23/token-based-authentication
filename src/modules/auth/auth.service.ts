@@ -6,8 +6,6 @@ import { Conflict, Unauthorized } from 'http-errors';
 import jwt, { JwtHeader, SigningKeyCallback } from 'jsonwebtoken';
 import ms from 'ms';
 import { randomBytes } from 'node:crypto';
-import fs from 'node:fs';
-import path from 'node:path';
 import { refreshToken, user } from '../../db/schema';
 import { JwksService } from '../../services/jwks.service';
 import { TokenSchema } from './schemas/tokens.schema';
@@ -184,7 +182,7 @@ export class AuthService {
 
   private async generateTokens(userId: string): Promise<TokenSchema> {
     const refreshToken = await this.generateRefreshToken(userId);
-    const accessToken = this.generateAccessToken(userId);
+    const accessToken = await this.generateAccessToken(userId);
     return {
       refresh_token: refreshToken,
       access_token: accessToken,
@@ -203,32 +201,22 @@ export class AuthService {
     return token;
   }
 
-  private generateAccessToken(userId: string): string {
-    const folders = fs
-      .readdirSync(this.PEM_EXPORT_PATH)
-      .filter((item) => {
-        const stat = fs.statSync(path.resolve(this.PEM_EXPORT_PATH, item));
-        return stat.isDirectory();
-      })
-      .map((folder) => ({
-        name: folder,
-        location: path.resolve(this.PEM_EXPORT_PATH, folder),
-      }));
-    const newestFolder = folders.sort((a, b) => {
-      const aTimestamp = fs.statSync(a.location).mtime;
-      const bTimestamp = fs.statSync(b.location).mtime;
-      return bTimestamp.getTime() - aTimestamp.getTime();
-    })[0];
-    const PRIVATE_KEY = fs.readFileSync(
-      path.resolve(newestFolder.location, 'private.key'),
-      'utf-8',
-    );
-    const KEY_ID = newestFolder.name;
-    const token = jwt.sign({ userId }, PRIVATE_KEY, {
+  private async generateAccessToken(userId: string): Promise<string> {
+    const keys = Array.from(await JwksService.getKeys());
+    const [KEY_ID, info] = keys.sort(
+      ([, { createdAt }], [, { createdAt: nextCreatedAt }]) => {
+        return (
+          new Date(nextCreatedAt).getTime() - new Date(createdAt).getTime()
+        );
+      },
+    )[0];
+    const PRIVATE_KEY = info.private;
+    const options: jwt.SignOptions = {
       expiresIn: '5m',
       algorithm: JwksService.ALGORITHM,
       keyid: KEY_ID,
-    });
+    };
+    const token = jwt.sign({ userId }, PRIVATE_KEY, options);
     return token;
   }
 
@@ -236,23 +224,13 @@ export class AuthService {
     header: JwtHeader,
     callback: SigningKeyCallback,
   ) {
-    const folders = fs.readdirSync(this.PEM_EXPORT_PATH);
-    if (!header.kid) {
-      callback(new Error('kid not found'));
-      return;
-    }
-    if (folders.includes(header.kid)) {
-      const stat = fs.statSync(path.resolve(this.PEM_EXPORT_PATH, header.kid));
-      if (stat.isDirectory()) {
-        const PUBLIC_KEY = fs.readFileSync(
-          path.resolve(this.PEM_EXPORT_PATH, header.kid, 'public.key'),
-          'utf-8',
-        );
-        callback(null, PUBLIC_KEY);
+    const keys = await JwksService.getKeys();
+    for (const [kid, key] of keys.entries()) {
+      if (kid === header.kid) {
+        callback(null, key.public);
         return;
       }
     }
     callback(new Error('kid not found'));
-    return;
   }
 }
