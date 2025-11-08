@@ -37,9 +37,6 @@ export default asRoute(async function appRoute(app) {
     },
     async handler() {
       const jwks = await JwksService.getJwks();
-
-      console.log(jwks);
-
       return {
         keys: jwks,
       };
